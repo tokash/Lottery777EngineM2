@@ -1,0 +1,8 @@
+D:\gitRepository\Lottery777EngineM2\Lottery777EngineM2\bin\Debug\Lottery777EngineM2.exe.config
+D:\gitRepository\Lottery777EngineM2\Lottery777EngineM2\bin\Debug\Lottery777EngineM2.exe
+D:\gitRepository\Lottery777EngineM2\Lottery777EngineM2\bin\Debug\Lottery777EngineM2.pdb
+D:\gitRepository\Lottery777EngineM2\Lottery777EngineM2\bin\Debug\SQLServerCommon.dll
+D:\gitRepository\Lottery777EngineM2\Lottery777EngineM2\bin\Debug\SQLServerCommon.pdb
+D:\gitRepository\Lottery777EngineM2\Lottery777EngineM2\obj\Debug\Lottery777EngineM2.csprojResolveAssemblyReference.cache
+D:\gitRepository\Lottery777EngineM2\Lottery777EngineM2\obj\Debug\Lottery777EngineM2.exe
+D:\gitRepository\Lottery777EngineM2\Lottery777EngineM2\obj\Debug\Lottery777EngineM2.pdb
