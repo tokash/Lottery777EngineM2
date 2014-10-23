@@ -11,7 +11,7 @@ namespace Lottery777EngineM2
     {
         static void Main(string[] args)
         {
-            MyLottery777Engine lotteryEngine = new MyLottery777Engine("777.csv", false);
+            MyLottery777Engine lotteryEngine = new MyLottery777Engine("777.csv", true);
 
             try
             {

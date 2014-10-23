@@ -6,3 +6,11 @@ D:\gitRepository\Lottery777EngineM2\Lottery777EngineM2\bin\Debug\SQLServerCommon
 D:\gitRepository\Lottery777EngineM2\Lottery777EngineM2\obj\Debug\Lottery777EngineM2.csprojResolveAssemblyReference.cache
 D:\gitRepository\Lottery777EngineM2\Lottery777EngineM2\obj\Debug\Lottery777EngineM2.exe
 D:\gitRepository\Lottery777EngineM2\Lottery777EngineM2\obj\Debug\Lottery777EngineM2.pdb
+C:\Users\Tokashyo\Documents\Visual Studio 2012\Projects\Lottery777EngineM2\Lottery777EngineM2\bin\Debug\Lottery777EngineM2.exe.config
+C:\Users\Tokashyo\Documents\Visual Studio 2012\Projects\Lottery777EngineM2\Lottery777EngineM2\obj\Debug\Lottery777EngineM2.exe
+C:\Users\Tokashyo\Documents\Visual Studio 2012\Projects\Lottery777EngineM2\Lottery777EngineM2\obj\Debug\Lottery777EngineM2.pdb
+C:\Users\Tokashyo\Documents\Visual Studio 2012\Projects\Lottery777EngineM2\Lottery777EngineM2\bin\Debug\Lottery777EngineM2.exe
+C:\Users\Tokashyo\Documents\Visual Studio 2012\Projects\Lottery777EngineM2\Lottery777EngineM2\bin\Debug\Lottery777EngineM2.pdb
+C:\Users\Tokashyo\Documents\Visual Studio 2012\Projects\Lottery777EngineM2\Lottery777EngineM2\bin\Debug\SQLServerCommon.dll
+C:\Users\Tokashyo\Documents\Visual Studio 2012\Projects\Lottery777EngineM2\Lottery777EngineM2\bin\Debug\SQLServerCommon.pdb
+C:\Users\Tokashyo\Documents\Visual Studio 2012\Projects\Lottery777EngineM2\Lottery777EngineM2\obj\Debug\Lottery777EngineM2.csprojResolveAssemblyReference.cache

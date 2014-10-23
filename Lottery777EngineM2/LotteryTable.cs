@@ -37,6 +37,12 @@ namespace Lottery777EngineM2
         public int Rank = 1;
     }
 
+    public class WinOccurence
+    {
+        public int RaffleID;
+        public int HitCount;
+    }
+
     public class ChosenLottery777Table
     {
         public int[] Numbers = new int[7];
@@ -44,7 +50,7 @@ namespace Lottery777EngineM2
         //public int Leading;        
         public int[] HitCountArray;
         public int HitCount;
-        public List<int> WinningRafflesTracking;
+        public List<WinOccurence> WinningRafflesTracking;
         //public int[] HitDispersion;
         //public int StrongNumber;
     }
@@ -317,6 +323,36 @@ namespace Lottery777EngineM2
         }
 
         public int GetHashCode(int[] obj)
+        {
+            return base.GetHashCode();
+            //return obj.Id.GetHashCode() ^
+            //    obj.Name.GetHashCode() ^
+            //    obj.Code.GetHashCode() ^
+            //    obj.Price.GetHashCode();
+        }
+    }
+
+    class WinOccurenceComparer : IEqualityComparer<WinOccurence>
+    {
+
+        public bool Equals(WinOccurence x, WinOccurence y)
+        {
+            bool isEqual = false;
+
+            //Console.WriteLine(string.Format("{0} - {1}", x.Length, y.Length));
+            if (x.RaffleID == y.RaffleID)
+            {
+                isEqual = true;
+            }
+            else
+            {
+                isEqual = false;
+            }
+
+            return isEqual;
+        }
+
+        public int GetHashCode(WinOccurence obj)
         {
             return base.GetHashCode();
             //return obj.Id.GetHashCode() ^
