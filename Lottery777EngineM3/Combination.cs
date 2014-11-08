@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Lottery777EngineM2
+namespace Lottery777EngineM3
 {
     public class Combination
     {

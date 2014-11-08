@@ -7,13 +7,15 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Threading;
 using System.Net;
 using System.Diagnostics;
 using System.Data;
+using System.Reflection;
 
-namespace Lottery777EngineM2
+namespace Lottery777EngineM3
 {
-    class MyLottery777Engine
+    public class MyLottery777Engine
     {
         #region Members
         List<Lottery777WinningResult> _LotteryHistoricResults = new List<Lottery777WinningResult>();
@@ -34,11 +36,15 @@ namespace Lottery777EngineM2
         HashSet<Lottery777WinningResult> _CurrentlyExistingWinningResults = new HashSet<Lottery777WinningResult>();
         HashSet<ChosenLottery777Table> _CurrentlyExistingChosenTables = new HashSet<ChosenLottery777Table>();
         HashSet<int> _CurrentlyExistingProcessedWinningTables = new HashSet<int>();
+        public HashSet<ChosenLottery777Table> ExistingWinningChosenTables { get { return _CurrentlyExistingChosenTables; } }
 
         Dictionary<int[], ChosenLottery777Table> _CurrentlyExistingChosenTablesAsDict = new System.Collections.Generic.Dictionary<int[], ChosenLottery777Table>(new Distinct777TableComparer());
+        DataTable _CurrentlyExistingChosenTablesWinChain = null;
 
-        Object _LockAddNew = new Object();
-        Object _LockUpdate = new Object();
+        Queue<Lottery777DBOperation> _DBOperations = new System.Collections.Generic.Queue<Lottery777DBOperation>();
+        bool _MoreDBOperationsExist = true;
+
+        Object _Locker = new Object();        
         #endregion
 
         #region C'tor
@@ -67,9 +73,13 @@ namespace Lottery777EngineM2
             GetProcessedWinningRafflesFromDB();
             GetCurrentWinningResultsFromDB();
             GetChosenTablesFromDB();
-            
 
-            InjectLotteryResultsToDB();
+            //InjectLotteryResultsToDB();
+
+            //Starting DB updates thread
+            //Console.WriteLine(string.Format("{0}: Started DB Updating thread...", DateTime.Now));
+            //Thread t = new Thread(new ThreadStart(UpdateDB));
+            //t.Start();
         }
         #endregion
 
@@ -91,6 +101,18 @@ namespace Lottery777EngineM2
                 "SIZE = 3MB, " +
                 "MAXSIZE = 10000MB, " +
                 "FILEGROWTH = 10%)";
+
+        private static readonly string sqlQueryGetChosenTables =
+        @"
+        SELECT ID, Num1, Num2, Num3, Num4, Num5, Num6, Num7, Hits5, Hits6, Hits7 FROM [Lottery777DB].[dbo].LotteryChosenTables
+        where Hits5 >= 66 or Hits6>=15
+        order by Hits5 desc";
+
+
+        private static readonly string sqlQueryGetAllChosenTables =        
+        @"SELECT ID, Num1, Num2, Num3, Num4, Num5, Num6, Num7, Hits5, Hits6, Hits7 FROM [Lottery777DB].[dbo].LotteryChosenTables
+        order by Hits5 desc";
+
 
         internal static readonly string LotteryHistoricResultsTableSchema = "CREATE TABLE LotteryHistoricResults (ID int IDENTITY(1,1), RaffleID int NOT NULL, RaffleDate date, Num1 int NOT NULL , Num2 int NOT NULL, Num3 int NOT NULL, Num4 int NOT NULL, Num5 int NOT NULL, Num6 int NOT NULL, Num7 int NOT NULL, Num8 int NOT NULL, Num9 int NOT NULL, Num10 int NOT NULL, Num11 int NOT NULL, Num12 int NOT NULL, Num13 int NOT NULL, Num14 int NOT NULL, Num15 int NOT NULL, Num16 int NOT NULL, Num17 int NOT NULL, PRIMARY KEY (ID))";
         internal static readonly string[] LotteryHistoricResultsTableColumns = { "RaffleID", "RaffleDate", "Num1", "Num2", "Num3", "Num4", "Num5", "Num6", "Num7", "Num8", "Num9", "Num10", "Num11", "Num12", "Num13", "Num14", "Num15", "Num16", "Num17" };
@@ -322,75 +344,46 @@ namespace Lottery777EngineM2
                             currItem.HitCountArray = hitCountArray;
                             currItem.WinningRafflesTracking = winningRaffleTracking;
 
-                            if (!_CurrentlyExistingChosenTables.Contains(currItem, new DistinctFullChosenLottery777TableComparer()))
+                            lock (_Locker)
                             {
-                                //Adding chosen record to Currently existing chosen tables list
-                                _CurrentlyExistingChosenTables.Add(currItem);
-                                _CurrentlyExistingChosenTablesAsDict.Add(currItem.Numbers, currItem);
-
-
-                                lock (_LockAddNew)
+                                if (!_CurrentlyExistingChosenTables.Contains(currItem, new DistinctFullChosenLottery777TableComparer()))
                                 {
-                                    //Adding chosen record to DB
-                                    AddChosenLotteryTableRecordToDBWithoutCheckingExistence(currItem);
+                                    //Adding chosen record to Currently existing chosen tables list
+                                    _CurrentlyExistingChosenTables.Add(currItem);
+                                    _CurrentlyExistingChosenTablesAsDict.Add(currItem.Numbers, currItem);
 
-                                    //Adding win chain to DB
-                                    for (int j = 0; j < currItem.WinningRafflesTracking.Count; j++)
-                                    {
-                                        int rafflePlace = _LotteryHistoricResults.FindIndex(x => int.Parse(x._LotteryRaffleID) == currItem.WinningRafflesTracking[j].RaffleID);
-                                        int hitCount = currItem.Numbers.Intersect(_LotteryHistoricResults[rafflePlace]._Numbers).Count();
-
-                                        try
-                                        {
-                                            AddChosenLotteryTableWinChainToDB(currItem, j, hitCount);
-                                        }
-                                        catch (Exception)
-                                        {
-
-                                            throw;
-                                        }
-                                    }
+                                    _DBOperations.Enqueue(new Lottery777DBOperation { Operation = DBOperation.Add, Table = currItem });
                                 }
-                            }
-                            else
-                            {
-                                //The record exists in the DB, and we need to check if anything changed
-                                try
+                                else
                                 {
-                                    //_Stopwatch2.Reset();
-                                    //_Stopwatch2.Start();
-                                    ChosenLottery777Table existingRecord = _CurrentlyExistingChosenTablesAsDict[currItem.Numbers];
-                                    //_Stopwatch2.Stop();
-                                    //Console.WriteLine(string.Format("{0}: Lookup took: {1}", DateTime.Now, _Stopwatch2.Elapsed));
-
-
-                                    if (existingRecord != null)
+                                    //The record exists in the DB, and we need to check if anything changed
+                                    try
                                     {
-                                        //Verifying that the chosen table record changed
-                                        if (currItem.HitCountArray[5] > existingRecord.HitCountArray[5] ||
-                                            currItem.HitCountArray[6] > existingRecord.HitCountArray[6] ||
-                                            currItem.HitCountArray[7] > existingRecord.HitCountArray[7])
+                                        //_Stopwatch2.Reset();
+                                        //_Stopwatch2.Start();
+                                        ChosenLottery777Table existingRecord = _CurrentlyExistingChosenTablesAsDict[currItem.Numbers];
+                                        //_Stopwatch2.Stop();
+                                        //Console.WriteLine(string.Format("{0}: Lookup took: {1}", DateTime.Now, _Stopwatch2.Elapsed));
+
+
+                                        if (existingRecord != null)
                                         {
-
-                                            lock (_LockUpdate)
+                                            //Verifying that the chosen table record changed
+                                            if (currItem.HitCountArray[5] > existingRecord.HitCountArray[5] ||
+                                                currItem.HitCountArray[6] > existingRecord.HitCountArray[6] ||
+                                                currItem.HitCountArray[7] > existingRecord.HitCountArray[7])
                                             {
-                                                UpdateChosenTableInDB(currItem);
-
-                                                //Need to populate win chain before updating an existing record
-                                                //currItem.WinningRafflesTracking = GetWinChainForExistingChosenTable(currItem);
-
-                                                //Now we need to update the win chain as well, because if one of the hit counts changed
-                                                //The win chain has changed as well
-                                                UpdateChosenLotteryTableWinChain(currItem);
+                                                //Adding to update list
+                                                _DBOperations.Enqueue(new Lottery777DBOperation{ Operation = DBOperation.Update, Table = currItem});
                                             }
                                         }
                                     }
-                                }
-                                catch (Exception)
-                                {
+                                    catch (Exception)
+                                    {
 
-                                    throw;
-                                }
+                                        throw;
+                                    }
+                                } 
                             }
                         }
                     }
@@ -400,13 +393,126 @@ namespace Lottery777EngineM2
                     AddProcessedWinningResultToDBWithoutCheckingExistence(_LotteryHistoricResults[i]);
 
                     sw.Stop();
-                    Console.WriteLine(string.Format("{0}: {1} out of {2}: Going over all combinations took: {3}", DateTime.Now, i + 1, iNumResultsToConsider, sw.Elapsed));
+                    Console.WriteLine(string.Format("{0}: {1} out of {2} took: {3}", DateTime.Now, i + 1, iNumResultsToConsider, sw.Elapsed));
                     Console.Write("\r");
                     sw.Reset();
 
                     generatedPossibilites.Clear(); 
                 }
             }
+
+            _MoreDBOperationsExist = false;
+
+        }
+
+        public void GenerateLottery777TablesParallelThread(int iNumResultsToConsider, int iStartingIndex, Action oCallback)
+        {
+            Stopwatch sw = new Stopwatch();
+
+            //read all existing chosen tables from the db
+            Dictionary<int[], ChosenLottery777Table> tmpCurrentlyExistingChosenTablesAsDict = new System.Collections.Generic.Dictionary<int[], ChosenLottery777Table>(new Distinct777TableComparer());
+            HashSet<ChosenLottery777Table> tmpCurrentlyExistingChosenTables = GetAllChosenTablesFromDB(ref tmpCurrentlyExistingChosenTablesAsDict);
+
+            List<ChosenLottery777Table> generatedPossibilites = new System.Collections.Generic.List<ChosenLottery777Table>();
+
+            for (int i = iStartingIndex; i < iNumResultsToConsider; i++)
+            {
+                if (!_CurrentlyExistingProcessedWinningTables.Contains(int.Parse(_LotteryHistoricResults[i]._LotteryRaffleID)))
+                {
+                    //sw.Start();
+                    GenerateSubsets3(_LotteryHistoricResults[i]._Numbers, 7, ref generatedPossibilites);
+                    //sw.Stop();
+
+                    //Console.Write(string.Format("Generating all combinations of 7 from 17 numbers took: {0}", sw.Elapsed));
+                    //Console.Write("\r");
+                    //sw.Reset();
+
+                    sw.Start();
+                    Parallel.ForEach(generatedPossibilites, currItem =>
+                    {
+                        int[] hitCountArray = new int[8];
+                        List<WinOccurence> winningRaffleTracking = new System.Collections.Generic.List<WinOccurence>();
+                        int hitCountTotal = GetHitCountForLastNResults(currItem.Numbers, 5, _LotteryHistoricResults.Count, ref hitCountArray, ref winningRaffleTracking);
+
+                        if (hitCountTotal >= 80 || hitCountArray[6] >= 10)// && !iChosen.Contains(item, new DistinctChosenLottery777TableComparer()))
+                        {
+                            currItem.HitCount = hitCountTotal;
+                            currItem.HitCountArray = hitCountArray;
+                            currItem.WinningRafflesTracking = winningRaffleTracking;
+
+                            lock (_Locker)
+                            {
+                                if (!_CurrentlyExistingChosenTables.Contains(currItem, new DistinctFullChosenLottery777TableComparer()))
+                                {
+                                    //Adding chosen record to Currently existing chosen tables list
+                                    tmpCurrentlyExistingChosenTables.Add(currItem);
+
+
+                                    try
+                                    {
+                                        tmpCurrentlyExistingChosenTablesAsDict.Add(currItem.Numbers, currItem);
+
+                                        //adding only if didnt find a duplicate
+                                        _DBOperations.Enqueue(new Lottery777DBOperation { Operation = DBOperation.Add, Table = currItem });
+                                    }
+                                    catch (Exception)
+                                    {
+                                        
+                                        //throw;
+                                    }
+
+                                    
+                                }
+                                else
+                                {
+                                    //The record exists in the DB, and we need to check if anything changed
+                                    try
+                                    {
+                                        //_Stopwatch2.Reset();
+                                        //_Stopwatch2.Start();
+                                        ChosenLottery777Table existingRecord = tmpCurrentlyExistingChosenTablesAsDict[currItem.Numbers];
+                                        //_Stopwatch2.Stop();
+                                        //Console.WriteLine(string.Format("{0}: Lookup took: {1}", DateTime.Now, _Stopwatch2.Elapsed));
+
+
+                                        if (existingRecord != null)
+                                        {
+                                            //Verifying that the chosen table record changed
+                                            if (currItem.HitCountArray[5] > existingRecord.HitCountArray[5] ||
+                                                currItem.HitCountArray[6] > existingRecord.HitCountArray[6] ||
+                                                currItem.HitCountArray[7] > existingRecord.HitCountArray[7])
+                                            {
+                                                //Adding to update list
+                                                _DBOperations.Enqueue(new Lottery777DBOperation { Operation = DBOperation.Update, Table = currItem });
+                                            }
+                                        }
+                                    }
+                                    catch (Exception)
+                                    {
+
+                                        throw;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    );
+
+                    //Adding processed winning result to DB Updates list
+                    AddProcessedWinningResultToDBWithoutCheckingExistence(_LotteryHistoricResults[i]);
+
+                    //sw.Stop();
+                    //Console.WriteLine(string.Format("{0}: {1} out of {2} took: {3}", DateTime.Now, i + 1, iNumResultsToConsider, sw.Elapsed));
+                    //Console.Write("\r");
+                    //sw.Reset();
+
+                    generatedPossibilites.Clear();
+                    
+                }
+            }
+
+            _MoreDBOperationsExist = false;
+            oCallback();
 
         }
 
@@ -654,10 +760,11 @@ namespace Lottery777EngineM2
             return winningsAfterTax;
         }
 
-        private bool IsChoosingCriterionMet(ChosenLottery777Table iLotteryTable, int iNumWinnings, int iRaffleTollerance)
+        public bool IsChoosingCriterionMet(ChosenLottery777Table iLotteryTable, int iNumWinnings, int iRaffleTollerance)
         {
             bool retVal = false;
-            int lastWin = iLotteryTable.WinningRafflesTracking[0].RaffleID;
+            //int lastWin = iLotteryTable.WinningRafflesTracking[0].RaffleID;
+            int lastWin = int.Parse(_LotteryHistoricResults[0]._LotteryRaffleID.ToString());
 
             //Need to calc difference between 2 adjacent raffle numbers
             List<int> differences = new System.Collections.Generic.List<int>();
@@ -665,7 +772,7 @@ namespace Lottery777EngineM2
             for (int i = 1; i < iLotteryTable.WinningRafflesTracking.Count; i++)
             {
 
-                if (iLotteryTable.WinningRafflesTracking[i].RaffleID > lastWin - iRaffleTollerance && i + 1 < iLotteryTable.WinningRafflesTracking.Count)
+                if (iLotteryTable.WinningRafflesTracking[i].RaffleID > lastWin - iRaffleTollerance && iLotteryTable.WinningRafflesTracking[i].HitCount != 7 && i + 1 < iLotteryTable.WinningRafflesTracking.Count)
                 {
                     differences.Add(iLotteryTable.WinningRafflesTracking[i - 1].RaffleID - iLotteryTable.WinningRafflesTracking[i].RaffleID);
                 }
@@ -704,6 +811,119 @@ namespace Lottery777EngineM2
             }
 
             return isHit;
+        }
+
+        public void UpdateDB()
+        {
+            int i = 1;
+
+            while (_MoreDBOperationsExist || _DBOperations.Count > 0)
+            {
+                if (_DBOperations.Count > 0)
+                {
+                    Lottery777DBOperation op = _DBOperations.Dequeue();
+
+                    if (op.Operation == DBOperation.Add)
+                    {
+                        try
+                        {
+                            //Adding chosen record to DB
+                            AddChosenLotteryTableRecordToDBWithoutCheckingExistence(op.Table);
+
+                            //Adding win chain to DB
+                            for (int j = 0; j < op.Table.WinningRafflesTracking.Count; j++)
+                            {
+                                int rafflePlace = _LotteryHistoricResults.FindIndex(x => int.Parse(x._LotteryRaffleID) == op.Table.WinningRafflesTracking[j].RaffleID);
+                                int hitCount = op.Table.Numbers.Intersect(_LotteryHistoricResults[rafflePlace]._Numbers).Count();
+
+                                AddChosenLotteryTableWinChainToDB(op.Table, j, hitCount);
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            throw;
+                        }
+                    }
+                    else if (op.Operation == DBOperation.Update)
+                    {
+                        try
+                        {
+                            UpdateChosenTableInDB(op.Table);
+
+                            //Need to populate win chain before updating an existing record
+                            //currItem.WinningRafflesTracking = GetWinChainForExistingChosenTable(currItem);
+
+                            //Now we need to update the win chain as well, because if one of the hit counts changed
+                            //The win chain has changed as well
+                            UpdateChosenLotteryTableWinChain(op.Table);
+                        }
+                        catch (Exception)
+                        {
+                            throw;
+                        }
+                    }
+
+                    Console.WriteLine(string.Format("{0}: Completed {1}/{2} modifications to the DB", DateTime.Now, i, _DBOperations.Count));
+                    i++; 
+                }
+            }
+        }
+
+        public void UpdateDBThread(Action oCallback)
+        {
+            int i = 1;
+
+            while (_MoreDBOperationsExist || _DBOperations.Count > 0)
+            {
+                if (_DBOperations.Count > 0)
+                {
+                    Lottery777DBOperation op = _DBOperations.Dequeue();
+
+                    if (op.Operation == DBOperation.Add)
+                    {
+                        try
+                        {
+                            //Adding chosen record to DB
+                            AddChosenLotteryTableRecordToDBWithoutCheckingExistence(op.Table);
+
+                            //Adding win chain to DB
+                            for (int j = 0; j < op.Table.WinningRafflesTracking.Count; j++)
+                            {
+                                int rafflePlace = _LotteryHistoricResults.FindIndex(x => int.Parse(x._LotteryRaffleID) == op.Table.WinningRafflesTracking[j].RaffleID);
+                                int hitCount = op.Table.Numbers.Intersect(_LotteryHistoricResults[rafflePlace]._Numbers).Count();
+
+                                AddChosenLotteryTableWinChainToDB(op.Table, j, hitCount);
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            throw;
+                        }
+                    }
+                    else if (op.Operation == DBOperation.Update)
+                    {
+                        try
+                        {
+                            UpdateChosenTableInDB(op.Table);
+
+                            //Need to populate win chain before updating an existing record
+                            //currItem.WinningRafflesTracking = GetWinChainForExistingChosenTable(currItem);
+
+                            //Now we need to update the win chain as well, because if one of the hit counts changed
+                            //The win chain has changed as well
+                            UpdateChosenLotteryTableWinChain(op.Table);
+                        }
+                        catch (Exception)
+                        {
+                            throw;
+                        }
+                    }
+
+                    i++;
+                }
+            }
+
+            oCallback();
         }
         #endregion
 
@@ -1037,12 +1257,15 @@ namespace Lottery777EngineM2
             Console.WriteLine("{0}: Populating Existing Chosen results list from DB...", DateTime.Now);
 
             //get records from DB
-            DataTable queryResults = SQLServerCommon.SQLServerCommon.ExecuteQuery(String.Format("Select * from {0}", LotteryChosenTablesTableName), _DefaultConnectionString);
+            DataTable queryResults = SQLServerCommon.SQLServerCommon.ExecuteQuery(String.Format(sqlQueryGetChosenTables, LotteryChosenTablesTableName), _DefaultConnectionString);
 
             //convert DB record to a Lottery777WinningResult
             for (int i = 0; i < queryResults.Rows.Count; i++)
             {
                 ChosenLottery777Table res = new ChosenLottery777Table();
+
+                res.DB_ID = int.Parse(queryResults.Rows[i]["ID"].ToString());
+
                 //"Num1", "Num2", "Num3", "Num4", "Num5", "Num6", "Num7", "Hits5", "Hits6", "Hits7"
                 res.Numbers = new int[7];
                 res.Numbers[0] = int.Parse(queryResults.Rows[i]["Num1"].ToString());
@@ -1076,10 +1299,83 @@ namespace Lottery777EngineM2
                 //}
 
                 _CurrentlyExistingChosenTables.Add(res);
-                _CurrentlyExistingChosenTablesAsDict.Add(res.Numbers, res);
             }
 
+            _CurrentlyExistingChosenTables = _CurrentlyExistingChosenTables.Distinct(new DistinctChosenLottery777TableComparer()).ToHashSet();
+
+            foreach (ChosenLottery777Table item in _CurrentlyExistingChosenTables)
+	        {
+                _CurrentlyExistingChosenTablesAsDict.Add(item.Numbers, item);
+	        }
+
+            //_CurrentlyExistingChosenTablesAsDict = _CurrentlyExistingChosenTables.ToDictionary(x => x.Numbers, x => x, new Distinct777TableComparer());
+
             Console.WriteLine("{0}: Done Populating Chosen results list.", DateTime.Now);
+        }
+
+        private HashSet<ChosenLottery777Table> GetAllChosenTablesFromDB(ref Dictionary<int[], ChosenLottery777Table> oChosenTablesAsDictionary)
+        {
+            Console.WriteLine("{0}: Populating Existing Chosen results list from DB...", DateTime.Now);
+            HashSet<ChosenLottery777Table> dbChosenTables = new System.Collections.Generic.HashSet<ChosenLottery777Table>();
+
+            //get records from DB
+            DataTable queryResults = SQLServerCommon.SQLServerCommon.ExecuteQuery(String.Format(sqlQueryGetAllChosenTables, LotteryChosenTablesTableName), _DefaultConnectionString);
+
+            //convert DB record to a Lottery777WinningResult
+            for (int i = 0; i < queryResults.Rows.Count; i++)
+            {
+                ChosenLottery777Table res = new ChosenLottery777Table();
+                res.DB_ID = int.Parse(queryResults.Rows[i]["ID"].ToString());
+
+                //"Num1", "Num2", "Num3", "Num4", "Num5", "Num6", "Num7", "Hits5", "Hits6", "Hits7"
+                res.Numbers = new int[7];
+                res.Numbers[0] = int.Parse(queryResults.Rows[i]["Num1"].ToString());
+                res.Numbers[1] = int.Parse(queryResults.Rows[i]["Num2"].ToString());
+                res.Numbers[2] = int.Parse(queryResults.Rows[i]["Num3"].ToString());
+                res.Numbers[3] = int.Parse(queryResults.Rows[i]["Num4"].ToString());
+                res.Numbers[4] = int.Parse(queryResults.Rows[i]["Num5"].ToString());
+                res.Numbers[5] = int.Parse(queryResults.Rows[i]["Num6"].ToString());
+                res.Numbers[6] = int.Parse(queryResults.Rows[i]["Num7"].ToString());
+
+                res.HitCountArray = new int[8];
+                res.HitCountArray[5] = int.Parse(queryResults.Rows[i]["Hits5"].ToString());
+                res.HitCountArray[6] = int.Parse(queryResults.Rows[i]["Hits6"].ToString());
+                res.HitCountArray[7] = int.Parse(queryResults.Rows[i]["Hits7"].ToString());
+
+                res.HitCount = res.HitCountArray[5] + res.HitCountArray[6] + res.HitCountArray[7];
+
+                //get win chain for current chosen table
+                //int tableID = int.Parse(queryResults.Rows[i]["ID"].ToString());
+                //res.WinningRafflesTracking = new System.Collections.Generic.List<WinOccurence>();
+                //DataTable queryWinChainResults = SQLServerCommon.SQLServerCommon.ExecuteQuery(String.Format("Select * from {0} where ChosenTableID={1}", WinningTables_RaffleIDsTableName, tableID), _DefaultConnectionString);
+
+                //int rowCount = queryWinChainResults.Rows.Count;
+                //for (int j = 0; j < rowCount; j++)
+                //{
+                //    res.WinningRafflesTracking.Add(new WinOccurence
+                //    {
+                //        RaffleID = int.Parse(queryWinChainResults.Rows[j]["WonRaffleID"].ToString()),
+                //        HitCount = int.Parse(queryWinChainResults.Rows[j]["NumHits"].ToString())
+                //    });
+                //}
+
+                dbChosenTables.Add(res);
+            }
+
+            foreach (ChosenLottery777Table item in dbChosenTables)
+            {
+                try
+                {
+                    oChosenTablesAsDictionary.Add(item.Numbers, item);
+                }
+                catch (Exception)
+                {
+                    
+                    //throw;
+                }
+            }
+
+            return dbChosenTables;
         }
 
         private void GetProcessedWinningRafflesFromDB()
@@ -1206,7 +1502,7 @@ namespace Lottery777EngineM2
             
         }
 
-        private List<WinOccurence> GetWinChainForExistingChosenTable(ChosenLottery777Table iLotteryChosenTable)
+        public List<WinOccurence> GetWinChainForExistingChosenTable(ChosenLottery777Table iLotteryChosenTable)
         {
             //To update the win chain, we first need to get the records that already exist,
             //then discard all the records that already exist
@@ -1306,6 +1602,63 @@ namespace Lottery777EngineM2
 
             return res;
         }
+
+        private DataTable GetRawTableData(string iSqlQuery, string iConnectionString)
+        {
+            DataTable tmpDataTable = null;
+
+            try
+            {
+                tmpDataTable = SQLServerCommon.SQLServerCommon.ExecuteQuery(iSqlQuery, iConnectionString);
+            }
+            catch (Exception)
+            {
+                
+                throw;
+            }
+
+            return tmpDataTable;
+        }
+
+        public List<WinOccurence> GetWinChainForExistingChosenTable2(ChosenLottery777Table iLotteryChosenTable)
+        {
+            DataTable rawWinchain = null;
+
+            try
+            {
+                if (_CurrentlyExistingChosenTablesWinChain != null)
+                {
+                    rawWinchain = _CurrentlyExistingChosenTablesWinChain.Select("ChosenTableID=" + iLotteryChosenTable.DB_ID.ToString()).CopyToDataTable();
+                }
+                else
+                {
+                    _CurrentlyExistingChosenTablesWinChain = GetRawTableData("Select * from WinningTables_RaffleIDs", _DefaultConnectionString);
+
+                    rawWinchain = _CurrentlyExistingChosenTablesWinChain.Select("ChosenTableID=" + iLotteryChosenTable.DB_ID.ToString()).CopyToDataTable();
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            List<WinOccurence> winchain = null;
+
+            if (rawWinchain !=null)
+            {
+                winchain = ConvertDBDataToWinChain(rawWinchain); 
+            }
+
+            return winchain;
+        }
+
         #endregion
+    }
+
+    public static class Extensions
+    {
+        public static HashSet<T> ToHashSet<T>(this IEnumerable<T> source)
+        {
+            return new HashSet<T>(source);
+        }
     }
 }

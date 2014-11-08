@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Lottery777EngineM2
+namespace Lottery777EngineM3
 {
     public class Lottery777Table
     {
@@ -51,6 +51,8 @@ namespace Lottery777EngineM2
         public int[] HitCountArray;
         public int HitCount;
         public List<WinOccurence> WinningRafflesTracking;
+        public int DB_ID;
+        public bool IsChecked;
         //public int[] HitDispersion;
         //public int StrongNumber;
     }
@@ -67,6 +69,18 @@ namespace Lottery777EngineM2
 
         public int HitCount;
     }
+
+    public class Lottery777DBOperation
+    {
+        public ChosenLottery777Table Table;
+        public DBOperation Operation; 
+    }
+
+    public enum DBOperation
+    {
+        Add,
+        Update
+    };
 
     class DistinctItemComparer : IEqualityComparer<int[]>
     {
@@ -116,7 +130,7 @@ namespace Lottery777EngineM2
             if (x.Numbers.Length == y.Numbers.Length)
             {
                 int count = x.Numbers.Intersect(y.Numbers).ToList().Count;
-                if (count < 4)
+                if (count < 5)
                 {
                     isEqual = false;
                 }
@@ -324,7 +338,15 @@ namespace Lottery777EngineM2
 
         public int GetHashCode(int[] obj)
         {
-            return base.GetHashCode();
+            string hash = "";
+            int count = obj.Count();
+
+            for (int i = 0; i < count; i++)
+            {
+                hash += obj[i].ToString();
+            }
+
+            return hash.GetHashCode();
             //return obj.Id.GetHashCode() ^
             //    obj.Name.GetHashCode() ^
             //    obj.Code.GetHashCode() ^
